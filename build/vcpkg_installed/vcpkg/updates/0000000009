@@ -1,0 +1,6 @@
+Package: glslang
+Feature: tools
+Architecture: x64-linux
+Multi-Arch: same
+Description: Build the glslangValidator and spirv-remap binaries
+Status: install ok installed

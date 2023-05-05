@@ -32,6 +32,8 @@ class application {
         svklib::queue::sync sync;
 
         gllib::camera camera;
+        std::vector<svklib::instance::svkimage> compute_images;
+
 
     
     private:

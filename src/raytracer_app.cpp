@@ -1,9 +1,6 @@
-#include "convolution_app.hpp"
+#include "raytracer_app.hpp"
 #include "camera.hpp"
-#include "svk_pipeline.hpp"
 #include "vulkan/vulkan_core.h"
-#include <GLFW/glfw3.h>
-#include <unistd.h>
 #include <fstream>
 
 namespace raytracer { 
@@ -34,7 +31,7 @@ static bool captured = false;
 application::application()
 :   window("Convolution",1000,800),
     instance(window,VK_API_VERSION_1_3),
-    swapchain(instance,3,VK_IMAGE_USAGE_STORAGE_BIT,VK_PRESENT_MODE_IMMEDIATE_KHR),
+    swapchain(instance,3,VK_IMAGE_USAGE_TRANSFER_DST_BIT,VK_PRESENT_MODE_IMMEDIATE_KHR),
     compute_pipeline(instance),
     sync(instance,3),
     descriptor_allocator(instance.getDescriptorPool()),
@@ -42,12 +39,21 @@ application::application()
     threadpool(svklib::threadpool::get_instance())
 {
 //    uniform_buffer = instance.createUniformBuffer(sizeof(ubo));
-    createPipeline();
+    compute_images.resize(swapchain.framesInFlight); 
+    for (int i = 0; i < swapchain.framesInFlight; i++) {
+        compute_images[i] = instance.createComputeImage(VK_IMAGE_TYPE_2D, {swapchain.swapChainExtent.width,swapchain.swapChainExtent.height,1});
+        instance.createImageView(compute_images[i], VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
     swapchainPipelineBarrier();
+
+    createPipeline();
     window.setWindowUserPointer(&camera);
 }
 
 application::~application() {
+    for (auto& image : compute_images) {
+        instance.destroyImage(image);
+    }
 //    instance.destroyBuffer(uniform_buffer);
 }
 
@@ -55,6 +61,7 @@ void application::createPipeline() {
     auto compute_builder = svklib::compute::pipeline::builder::begin(instance);
     compute_builder.buildShader("shader.comp.glsl", VK_SHADER_STAGE_COMPUTE_BIT)
         .addDescriptorSetLayout(createDescriptorSets())
+        .buildPushConstant(VK_SHADER_STAGE_COMPUTE_BIT, 0, 128)
         .buildPipelineLayout();
 
     compute_builder.buildPipeline(nullptr,&compute_pipeline);
@@ -77,7 +84,7 @@ VkDescriptorSetLayout application::createDescriptorSets() {
     imageInfo.sampler = VK_NULL_HANDLE;
     imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
     for (int i = 0; i < swapchain.framesInFlight; i++) {
-        imageInfo.imageView = swapchain.swapChainImageViews[i];
+        imageInfo.imageView = compute_images[i].view.value();
         descriptorBuilder.update_image(0, &imageInfo);
         compute_pipeline.descriptorSets[0][i] = descriptorBuilder.buildSet();
     }
@@ -110,21 +117,22 @@ void application::drawFrame() {
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.srcAccessMask = 0;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = swapchain.swapChainImages[swapchain.currentFrame]; 
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
+    barrier.image = compute_images[swapchain.currentFrame].image; 
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+
     vkCmdPipelineBarrier(
             swapchain.commandBuffers[swapchain.currentFrame],
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             0,
             0, nullptr,
             0, nullptr,
@@ -142,18 +150,66 @@ void application::drawFrame() {
 
     vkCmdDispatch(swapchain.commandBuffers[swapchain.currentFrame], static_cast<uint32_t>(std::ceil(static_cast<float>(swapchain.swapChainExtent.width)/32.f)), static_cast<uint32_t>(std::ceil(static_cast<float>(swapchain.swapChainExtent.height)/32.f)), 1);
 
+    barrier.image = compute_images[swapchain.currentFrame].image; 
     barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
     vkCmdPipelineBarrier(
             swapchain.commandBuffers[swapchain.currentFrame],
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
             0,
             0, nullptr,
             0, nullptr,
             1, &barrier
             );
+
+    barrier.image = swapchain.swapChainImages[swapchain.currentFrame]; 
+    barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+    vkCmdPipelineBarrier(
+            swapchain.commandBuffers[swapchain.currentFrame],
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+            );
+
+    VkImageBlit blitRegion = {};
+    blitRegion.srcOffsets[0] = { 0, 0, 0 };
+    blitRegion.srcOffsets[1] = { (int)swapchain.swapChainExtent.width, (int)swapchain.swapChainExtent.height, 1 };
+    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.srcSubresource.mipLevel = 0;
+    blitRegion.srcSubresource.baseArrayLayer = 0;
+    blitRegion.srcSubresource.layerCount = 1;
+
+    blitRegion.dstOffsets[0] = { 0, 0, 0 };
+    blitRegion.dstOffsets[1] = { (int)swapchain.swapChainExtent.width, (int)swapchain.swapChainExtent.height, 1 };
+    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.dstSubresource.mipLevel = 0;
+    blitRegion.dstSubresource.baseArrayLayer = 0;
+    blitRegion.dstSubresource.layerCount = 1;
+
+    vkCmdBlitImage(swapchain.commandBuffers[swapchain.currentFrame], compute_images[swapchain.currentFrame].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, swapchain.swapChainImages[swapchain.currentFrame], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion, VK_FILTER_LINEAR);
+
+    barrier.image = swapchain.swapChainImages[swapchain.currentFrame]; 
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    vkCmdPipelineBarrier(
+            swapchain.commandBuffers[swapchain.currentFrame],
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+            );
+
+
 
     if (vkEndCommandBuffer(swapchain.commandBuffers[swapchain.currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
@@ -274,7 +330,6 @@ void application::swapchainPipelineBarrier() {
     barrier.srcAccessMask = 0;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
     barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -285,6 +340,21 @@ void application::swapchainPipelineBarrier() {
 
     for (int i = 0; i < swapchain.framesInFlight; i++) {
         barrier.image = swapchain.swapChainImages[i]; 
+        barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        vkCmdPipelineBarrier(
+                command_buffer,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &barrier
+                );
+                barrier.image = swapchain.swapChainImages[i]; 
+
+        barrier.image = compute_images[i].image; 
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
         vkCmdPipelineBarrier(
                 command_buffer,
@@ -296,7 +366,6 @@ void application::swapchainPipelineBarrier() {
                 1, &barrier
                 );
     }
-
 
     instance.endSingleTimeCommands(command_pool.get(), command_buffer);
     
@@ -310,14 +379,22 @@ void application::recreateSwapchain() {
         glfwGetFramebufferSize(window.win, &width, &height);
         glfwWaitEvents();
     }
+    for (auto& image : compute_images) {
+        instance.destroyImage(image);
+    }
 
     instance.waitForDeviceIdle();
 
     swapchain.recreateSwapChain();
 
-    swapchainPipelineBarrier();
+    //swapchainPipelineBarrier();
 
     createDescriptorSets();
+
+    for (int i = 0; i < swapchain.framesInFlight; i++) {
+        compute_images[i] = instance.createComputeImage(VK_IMAGE_TYPE_2D, {swapchain.swapChainExtent.width,swapchain.swapChainExtent.height,1});
+        instance.createImageView(compute_images[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
 
     camera.update_aspect(static_cast<float>(width)/static_cast<float>(height));
 

@@ -1,0 +1,9 @@
+Package: glslang
+Version: 12.1.0
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 5bdf2ec3a82300e96dc223da01664532d709a7cca169b49da8e8ab55d0ed204d
+Description: Khronos-reference front end for GLSL/ESSL, partial front end for HLSL, and a SPIR-V generator.
+Default-Features: tools
+Status: install ok half-installed
