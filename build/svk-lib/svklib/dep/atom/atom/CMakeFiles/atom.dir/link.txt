@@ -1,2 +1,0 @@
-/usr/bin/ar qc libatom.a CMakeFiles/atom.dir/semaphore.cpp.o CMakeFiles/atom.dir/fence.cpp.o CMakeFiles/atom.dir/threadpool.cpp.o
-/usr/bin/ranlib libatom.a

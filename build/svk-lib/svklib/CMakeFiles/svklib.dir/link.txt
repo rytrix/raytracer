@@ -1,2 +1,0 @@
-/usr/bin/ar qc libsvklib.a CMakeFiles/svklib.dir/pch.cpp.o CMakeFiles/svklib.dir/svklib.cpp.o CMakeFiles/svklib.dir/svk_window.cpp.o CMakeFiles/svklib.dir/svk_descriptor.cpp.o CMakeFiles/svklib.dir/svk_instance.cpp.o CMakeFiles/svklib.dir/svk_swapchain.cpp.o CMakeFiles/svklib.dir/svk_pipeline.cpp.o CMakeFiles/svklib.dir/svk_renderer.cpp.o CMakeFiles/svklib.dir/svk_shader.cpp.o CMakeFiles/svklib.dir/svk_threadpool.cpp.o
-/usr/bin/ranlib libsvklib.a
