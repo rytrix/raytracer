@@ -28,10 +28,12 @@ static void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 
 static bool captured = false;
 
+static constexpr int scaling = 4;
+
 application::application()
-:   window("Convolution",1000,800),
+:   window("Raytracing",1000,800),
     instance(window,VK_API_VERSION_1_3),
-    swapchain(instance,3,VK_IMAGE_USAGE_TRANSFER_DST_BIT,VK_PRESENT_MODE_IMMEDIATE_KHR),
+    swapchain(instance,3,VK_IMAGE_USAGE_TRANSFER_DST_BIT),
     compute_pipeline(instance),
     sync(instance,3),
     descriptor_allocator(instance.getDescriptorPool()),
@@ -271,39 +273,37 @@ void application::loop() {
         glfwPollEvents();
 
         updateDeltaTime();
-        threadpool->add_task([&](){
-                camera.update();
-                push.update(camera);
+        camera.update();
+        push.update(camera);
 
-                if (glfwGetKey(window.win, GLFW_KEY_W) == GLFW_PRESS) {
-                camera.move(gllib::camera::movement::forward, deltaTime);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_S) == GLFW_PRESS) {
-                camera.move(gllib::camera::movement::backward, deltaTime);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_A) == GLFW_PRESS) {
-                camera.move(gllib::camera::movement::left, deltaTime);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_D) == GLFW_PRESS) {
-                camera.move(gllib::camera::movement::right, deltaTime);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_SPACE) == GLFW_PRESS) {
-                camera.move(gllib::camera::movement::down, deltaTime);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-                    camera.move(gllib::camera::movement::up, deltaTime);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-                    captured = true;
-                    glfwSetCursorPosCallback(window.win, mouse_callback);
-                    glfwSetInputMode(window.win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                }
-                if (glfwGetKey(window.win, GLFW_KEY_1) == GLFW_PRESS) {
-                    captured = false;
-                    glfwSetCursorPosCallback(window.win, nullptr);
-                    glfwSetInputMode(window.win, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                }
-            });        
+        if (glfwGetKey(window.win, GLFW_KEY_W) == GLFW_PRESS) {
+            camera.move(gllib::camera::movement::forward, deltaTime);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_S) == GLFW_PRESS) {
+            camera.move(gllib::camera::movement::backward, deltaTime);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_A) == GLFW_PRESS) {
+            camera.move(gllib::camera::movement::left, deltaTime);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_D) == GLFW_PRESS) {
+            camera.move(gllib::camera::movement::right, deltaTime);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            camera.move(gllib::camera::movement::down, deltaTime);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            camera.move(gllib::camera::movement::up, deltaTime);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            captured = true;
+            glfwSetCursorPosCallback(window.win, mouse_callback);
+            glfwSetInputMode(window.win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        }
+        if (glfwGetKey(window.win, GLFW_KEY_1) == GLFW_PRESS) {
+            captured = false;
+            glfwSetCursorPosCallback(window.win, nullptr);
+            glfwSetInputMode(window.win, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
 
 
         //std::cout << push.direction[0] << "," << push.direction[1] << "," << push.direction[2] << std::endl;
@@ -379,22 +379,22 @@ void application::recreateSwapchain() {
         glfwGetFramebufferSize(window.win, &width, &height);
         glfwWaitEvents();
     }
-    for (auto& image : compute_images) {
-        instance.destroyImage(image);
-    }
+
 
     instance.waitForDeviceIdle();
 
     swapchain.recreateSwapChain();
 
-    //swapchainPipelineBarrier();
+    for (int i = 0; i < swapchain.framesInFlight; i++) {
+        instance.destroyImage(compute_images[i]);
+
+        compute_images[i] = instance.createComputeImage(VK_IMAGE_TYPE_2D, {swapchain.swapChainExtent.width,swapchain.swapChainExtent.height,1});
+        instance.createImageView(compute_images[i], VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+
+    swapchainPipelineBarrier();
 
     createDescriptorSets();
-
-    for (int i = 0; i < swapchain.framesInFlight; i++) {
-        compute_images[i] = instance.createComputeImage(VK_IMAGE_TYPE_2D, {swapchain.swapChainExtent.width,swapchain.swapChainExtent.height,1});
-        instance.createImageView(compute_images[i], VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-    }
 
     camera.update_aspect(static_cast<float>(width)/static_cast<float>(height));
 
