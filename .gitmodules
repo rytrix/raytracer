@@ -1,0 +1,3 @@
+[submodule "svk-lib"]
+	path = svk-lib
+	url = git@github.com:rottendurian/svk-lib.git
