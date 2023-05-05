@@ -1,2 +1,2 @@
 # raytracer
-A raytracer using my graphics library
+A raytracer using my vulkan graphics library
