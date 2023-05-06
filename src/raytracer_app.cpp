@@ -209,7 +209,7 @@ void application::drawFrame() {
 
     vkCmdPipelineBarrier(
             swapchain.commandBuffers[swapchain.currentFrame],
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             0,
             0, nullptr,
