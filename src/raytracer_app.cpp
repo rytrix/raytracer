@@ -61,7 +61,7 @@ application::~application() {
 
 void application::createPipeline() {
     auto compute_builder = svklib::compute::pipeline::builder::begin(instance);
-    compute_builder.buildShader("shader.comp.glsl", VK_SHADER_STAGE_COMPUTE_BIT)
+    compute_builder.buildShader("res/shader.comp.glsl", VK_SHADER_STAGE_COMPUTE_BIT)
         .addDescriptorSetLayout(createDescriptorSets())
         .buildPushConstant(VK_SHADER_STAGE_COMPUTE_BIT, 0, 128)
         .buildPipelineLayout();
