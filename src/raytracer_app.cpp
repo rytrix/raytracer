@@ -9,11 +9,11 @@ static void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
     static float lastX = 0.f, lastY = 0.f;
     static bool firstMouse = true;
 
-    //if (firstMouse) {
-    //    lastX = xpos;
-    //    lastY = ypos;
-    //    firstMouse = false;
-    //}
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
 
     float xoffset = xpos - lastX;
     float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
@@ -117,8 +117,6 @@ void application::drawFrame() {
 
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -128,6 +126,8 @@ void application::drawFrame() {
     barrier.subresourceRange.layerCount = 1;
 
     barrier.image = compute_images[swapchain.currentFrame].image; 
+    barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
 
@@ -153,27 +153,31 @@ void application::drawFrame() {
     vkCmdDispatch(swapchain.commandBuffers[swapchain.currentFrame], static_cast<uint32_t>(std::ceil(static_cast<float>(swapchain.swapChainExtent.width)/32.f)), static_cast<uint32_t>(std::ceil(static_cast<float>(swapchain.swapChainExtent.height)/32.f)), 1);
 
     barrier.image = compute_images[swapchain.currentFrame].image; 
+    barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;//VK_ACCESS_TRANSFER_READ_BIT;
     barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
     vkCmdPipelineBarrier(
             swapchain.commandBuffers[swapchain.currentFrame],
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
             0,
             0, nullptr,
             0, nullptr,
             1, &barrier
             );
 
-    barrier.image = swapchain.swapChainImages[swapchain.currentFrame]; 
+    barrier.image = swapchain.swapChainImages[swapchain.currentFrame];
+    barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;//VK_ACCESS_TRANSFER_WRITE_BIT;
     barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
     vkCmdPipelineBarrier(
             swapchain.commandBuffers[swapchain.currentFrame],
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
             0,
             0, nullptr,
             0, nullptr,
@@ -198,13 +202,15 @@ void application::drawFrame() {
     vkCmdBlitImage(swapchain.commandBuffers[swapchain.currentFrame], compute_images[swapchain.currentFrame].image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, swapchain.swapChainImages[swapchain.currentFrame], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion, VK_FILTER_LINEAR);
 
     barrier.image = swapchain.swapChainImages[swapchain.currentFrame]; 
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = 0;
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     vkCmdPipelineBarrier(
             swapchain.commandBuffers[swapchain.currentFrame],
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             0,
             0, nullptr,
             0, nullptr,
