@@ -18,13 +18,13 @@ add_executable(${PROJECT_NAME} src/main.cpp src/raytracer_app.cpp src/camera.cpp
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
-add_subdirectory(svk-lib)
+add_subdirectory(svklib)
 
 target_link_libraries(${PROJECT_NAME} svklib)
 
 target_include_directories(${PROJECT_NAME} 
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/svk-lib/svklib
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/svk-lib/dep/glm
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/svklib/svklib
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/svklib/dep/glm
 )
 
 
